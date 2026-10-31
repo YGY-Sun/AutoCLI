@@ -35,6 +35,9 @@ function createChromeMock() {
     { id: 1, windowId: 1, url: 'https://automation.example', title: 'automation', active: true, status: 'complete' },
     { id: 2, windowId: 2, url: 'https://user.example', title: 'user', active: true, status: 'complete' },
     { id: 3, windowId: 1, url: 'chrome://extensions', title: 'chrome', active: false, status: 'complete' },
+    { id: 4, windowId: 3, url: 'http://localhost:19925/ping#autocli-wake', title: 'wake', active: true, status: 'complete' },
+    { id: 5, windowId: 4, url: 'about:blank', title: 'blank', active: true, status: 'complete' },
+    { id: 6, windowId: 5, url: 'about:blank#blocked', title: 'blocked', active: true, status: 'complete' },
   ];
 
   const query = vi.fn(async (queryInfo: { windowId?: number } = {}) => {
@@ -66,6 +69,7 @@ function createChromeMock() {
       create,
       update,
       remove: vi.fn(async (_tabId: number) => {}),
+      move: vi.fn(async () => []),
       get: vi.fn(async (tabId: number) => {
         const tab = tabs.find((entry) => entry.id === tabId);
         if (!tab) throw new Error(`Unknown tab ${tabId}`);
@@ -86,9 +90,21 @@ function createChromeMock() {
     runtime: {
       onInstalled: { addListener: vi.fn() } as Listener<() => void>,
       onStartup: { addListener: vi.fn() } as Listener<() => void>,
+      onMessage: { addListener: vi.fn() } as Listener<(...args: any[]) => void>,
+      onConnect: { addListener: vi.fn() } as Listener<(...args: any[]) => void>,
+      getManifest: vi.fn(() => ({ version: 'test' })),
     },
     cookies: {
       getAll: vi.fn(async () => []),
+    },
+    action: {
+      onClicked: { addListener: vi.fn() } as Listener<(...args: any[]) => void>,
+    },
+    scripting: {
+      executeScript: vi.fn(async () => []),
+    },
+    debugger: {
+      sendCommand: vi.fn(async () => ({})),
     },
   };
 
@@ -149,5 +165,16 @@ describe('background tab isolation', () => {
       expect.objectContaining({ workspace: 'site:twitter', windowId: 1 }),
       expect.objectContaining({ workspace: 'site:zhihu', windowId: 2 }),
     ]));
+  });
+
+  it('closes only the local daemon wake tab', async () => {
+    const { chrome } = createChromeMock();
+    vi.stubGlobal('chrome', chrome);
+
+    const mod = await import('./background');
+    await mod.__test__.closeWakeTabs();
+
+    expect(chrome.tabs.remove).toHaveBeenCalledOnce();
+    expect(chrome.tabs.remove).toHaveBeenCalledWith([4]);
   });
 });

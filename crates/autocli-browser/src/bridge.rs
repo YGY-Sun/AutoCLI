@@ -68,7 +68,7 @@ impl BrowserBridge {
         // Step 4: Extension not connected — try to wake up Chrome
         info!("Extension not connected after 5s, attempting to wake up Chrome");
         eprintln!("Waking up Chrome extension...");
-        wake_chrome();
+        wake_chrome(self.port);
 
         // Step 5: Wait remaining 25s with progress
         if self.poll_extension(&client, EXTENSION_REMAINING_WAIT, true).await {
@@ -200,23 +200,28 @@ fn is_chrome_running() -> bool {
 /// Try to wake up Chrome by opening a window.
 /// When Chrome is running but has no windows, the extension Service Worker is suspended.
 /// Opening a window activates the Service Worker, which then reconnects to the daemon.
-fn wake_chrome() {
+fn wake_page(port: u16) -> String {
+    format!("http://localhost:{port}/ping#autocli-wake")
+}
+
+fn wake_chrome(port: u16) {
+    let wake_page = wake_page(port);
     let result = if cfg!(target_os = "macos") {
         std::process::Command::new("open")
-            .args(["-a", "Google Chrome", "about:blank"])
+            .args(["-a", "Google Chrome", &wake_page])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
     } else if cfg!(target_os = "windows") {
         std::process::Command::new("cmd")
-            .args(["/C", "start", "chrome", "about:blank"])
+            .args(["/C", "start", "chrome", &wake_page])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
     } else {
         // Linux: try common Chrome executables
         std::process::Command::new("xdg-open")
-            .arg("about:blank")
+            .arg(&wake_page)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -242,5 +247,17 @@ mod tests {
     fn test_bridge_default_port() {
         let bridge = BrowserBridge::default_port();
         assert_eq!(bridge.port, DEFAULT_PORT);
+    }
+
+    #[test]
+    fn test_wake_page_uses_daemon_port() {
+        assert_eq!(
+            wake_page(19925),
+            "http://localhost:19925/ping#autocli-wake"
+        );
+        assert_eq!(
+            wake_page(20001),
+            "http://localhost:20001/ping#autocli-wake"
+        );
     }
 }

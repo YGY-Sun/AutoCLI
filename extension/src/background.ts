@@ -14,6 +14,15 @@ import * as executor from './cdp';
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
+const WAKE_PAGE = `${DAEMON_PING_URL}#autocli-wake`;
+
+async function closeWakeTabs(): Promise<void> {
+  const tabs = await chrome.tabs.query({});
+  const tabIds = tabs
+    .filter(tab => tab.url === WAKE_PAGE && tab.id !== undefined)
+    .map(tab => tab.id!);
+  if (tabIds.length > 0) await chrome.tabs.remove(tabIds);
+}
 
 // ─── Console log forwarding ──────────────────────────────────────────
 // Hook console.log/warn/error to forward logs to daemon via WebSocket.
@@ -62,6 +71,7 @@ async function connect(): Promise<void> {
 
   ws.onopen = () => {
     console.log('[autocli] Connected to daemon');
+    void closeWakeTabs().catch(err => console.warn('[autocli] Failed to close wake tab:', err));
     reconnectAttempts = 0; // Reset on successful connection
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -831,6 +841,7 @@ async function handleSessions(cmd: Command): Promise<Result> {
 }
 
 export const __test__ = {
+  closeWakeTabs,
   handleNavigate,
   isTargetUrl,
   handleTabs,
